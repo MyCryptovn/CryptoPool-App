@@ -1,0 +1,19 @@
+name: Run public Trade upgrade
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Trade patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run upgrade-trade.yml --ref main
