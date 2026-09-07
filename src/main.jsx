@@ -4,7 +4,7 @@ import { createAppKit, AppKitButton, useAppKitAccount, useAppKitNetwork } from "
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { sepolia } from "@reown/appkit/networks";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { WagmiProvider, useBalance, useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
+import { WagmiProvider, useBalance, useEstimateGas, useGasPrice, useSendTransaction, useSwitchChain, useWaitForTransactionReceipt } from "wagmi";
 import { formatEther, isAddress, parseEther } from "viem";
 import "./style.css";
 
@@ -174,18 +174,151 @@ function Wallet({ go }) {
 function Trade() {
   const { address, isConnected } = useAppKitAccount();
   const { chainId } = useAppKitNetwork();
+  const { switchChain } = useSwitchChain();
   const goodNetwork = Number(chainId) === SEPOLIA_ID;
-  const { data: balance, refetch } = useBalance({ address, chainId: SEPOLIA_ID, query: { enabled: Boolean(address) } });
-  const { data: hash, error, isPending, sendTransactionAsync } = useSendTransaction();
-  const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash, confirmations: 1 });
+  const { data: balance, refetch: refetchBalance } = useBalance({ address, chainId: SEPOLIA_ID, query: { enabled: Boolean(address) } });
+  const { data: gasPrice } = useGasPrice({ chainId: SEPOLIA_ID, query: { enabled: goodNetwork } });
+  const { data: hash, error: txError, isPending, sendTransactionAsync, reset: resetTransaction } = useSendTransaction();
+  const { isLoading: confirming, isSuccess: confirmed, isError: receiptFailed, error: receiptError } = useWaitForTransactionReceipt({ hash, confirmations: 1 });
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("0x9BB4aBC72f2c4818F66C895Cd1a9de2c827C5C06");
-  const valid = isAddress(recipient);
-  const numeric = Number(amount);
-  const eth = balance ? Number(formatEther(balance.value)) : 0;
-  const enough = numeric > 0 && numeric + 0.0005 < eth;
-  const send = async () => { if (!isConnected || !goodNetwork || !valid || !enough || isPending || confirming) return; try { await sendTransactionAsync({ to: recipient, value: parseEther(amount), chainId: SEPOLIA_ID }); await refetch(); } catch {} };
-  return <div className="page"><Header title="Giao dịch testnet" text="Gửi ETH thật trên Ethereum Sepolia. Bạn tự kiểm tra và ký giao dịch trong ví." action={<AppKitButton/>}/><div className="trade-layout"><div className="trade-box"><div className="trade-label">SỐ DƯ ETH SEPOLIA</div><div className="balance-box"><strong>{balance ? `${eth.toFixed(6)} ETH` : "—"}</strong><button onClick={() => refetch()} disabled={!address}>↻</button></div><div className="trade-label">SỐ LƯỢNG</div><input className="amount" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0.001"/><div className="trade-label">ĐỊA CHỈ NHẬN</div><div className="input-with-action"><input className="recipient-input large-address-input" value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="0x…"/><button onClick={() => setRecipient("")}>Xóa</button></div><button className="primary-button" disabled={!isConnected || !goodNetwork || !valid || !enough || isPending || confirming} onClick={send}>{isSuccess ? "✓ Giao dịch đã xác nhận" : confirming ? "Đang xác nhận…" : isPending ? "Đang mở/xác nhận trong ví…" : !isConnected ? "Kết nối ví để gửi" : !goodNetwork ? "Chuyển sang Sepolia" : !valid ? "Địa chỉ nhận không hợp lệ" : !enough ? "Không đủ ETH sau gas" : "Gửi ETH Sepolia"}</button>{hash && <div className="tx-result"><b>Transaction</b><a target="_blank" rel="noreferrer" href={`https://sepolia.etherscan.io/tx/${hash}`}>{shorten(hash)}</a></div>}{error && <div className="inline-warning">{error.shortMessage || "Giao dịch bị hủy hoặc thất bại."}</div>}</div><aside className="checks"><h3>Kiểm tra trước khi gửi</h3><div className="check"><span className={isConnected ? "check-good" : "check-bad"}>{isConnected ? "✓" : "!"}</span><div><b>Wallet</b><small>{isConnected ? shorten(address) : "Chưa kết nối"}</small></div></div><div className="check"><span className={goodNetwork ? "check-good" : "check-bad"}>{goodNetwork ? "✓" : "!"}</span><div><b>Network</b><small>{goodNetwork ? "Ethereum Sepolia" : "Cần Sepolia"}</small></div></div><div className="check"><span className={valid ? "check-good" : "check-bad"}>{valid ? "✓" : "!"}</span><div><b>Recipient</b><small>{valid ? "Địa chỉ hợp lệ" : "Địa chỉ không hợp lệ"}</small></div></div><div className="check"><span className="check-good">✓</span><div><b>Execution</b><small>Blockchain testnet thật</small></div></div></aside></div></div>;
+  const [step, setStep] = useState("form");
+  const [localError, setLocalError] = useState("");
+
+  const validRecipient = isAddress(recipient.trim());
+  const amountWei = useMemo(() => {
+    try {
+      if (!amount || Number(amount) <= 0) return 0n;
+      return parseEther(amount);
+    } catch {
+      return 0n;
+    }
+  }, [amount]);
+  const balanceWei = balance?.value ?? 0n;
+  const gasUnitsFallback = 21000n;
+  const gasUnits = gasPrice && gasPrice > 0n ? gasUnitsFallback : gasUnitsFallback;
+  const gasWei = gasPrice ? gasPrice * gasUnits : 0n;
+  const totalWei = amountWei + gasWei;
+  const hasEnough = amountWei > 0n && totalWei < balanceWei;
+  const amountValid = amountWei > 0n;
+  const gasEth = gasWei ? Number(formatEther(gasWei)) : 0;
+  const balanceEth = balance ? Number(formatEther(balance.value)) : 0;
+  const explorerUrl = hash ? `https://sepolia.etherscan.io/tx/${hash}` : "";
+
+  const validationMessage = !isConnected
+    ? "Kết nối ví trước khi giao dịch."
+    : !goodNetwork
+      ? "Ví đang ở mạng khác. Chuyển sang Ethereum Sepolia."
+      : !validRecipient
+        ? "Địa chỉ nhận không hợp lệ."
+        : !amountValid
+          ? "Nhập số lượng ETH lớn hơn 0."
+          : !hasEnough
+            ? "Không đủ ETH để trả cả số tiền gửi và gas."
+            : "";
+
+  const resetForm = () => {
+    setStep("form");
+    setLocalError("");
+    resetTransaction();
+  };
+
+  const setMax = () => {
+    if (!balance) return;
+    const reserveWei = gasWei || parseEther("0.0002");
+    const maxWei = balanceWei > reserveWei ? balanceWei - reserveWei : 0n;
+    setAmount(maxWei > 0n ? formatEther(maxWei) : "0");
+    setLocalError("");
+  };
+
+  const review = () => {
+    setLocalError("");
+    if (validationMessage) {
+      setLocalError(validationMessage);
+      return;
+    }
+    setStep("review");
+  };
+
+  const switchToSepolia = async () => {
+    try {
+      setLocalError("");
+      await switchChain({ chainId: SEPOLIA_ID });
+    } catch (e) {
+      setLocalError(e?.shortMessage || e?.message || "Không thể chuyển sang Sepolia.");
+    }
+  };
+
+  const confirmAndSign = async () => {
+    setLocalError("");
+    if (validationMessage) {
+      setLocalError(validationMessage);
+      setStep("form");
+      return;
+    }
+    try {
+      setStep("signing");
+      await sendTransactionAsync({ to: recipient.trim(), value: amountWei, chainId: SEPOLIA_ID });
+      setStep("submitted");
+      await refetchBalance();
+    } catch (e) {
+      setStep("review");
+      setLocalError(e?.shortMessage || e?.message || "Giao dịch bị từ chối hoặc thất bại.");
+    }
+  };
+
+  useEffect(() => {
+    if (confirmed) setStep("confirmed");
+    else if (receiptFailed) setStep("failed");
+  }, [confirmed, receiptFailed]);
+
+  const statusText = confirmed ? "Confirmed" : receiptFailed ? "Failed" : confirming ? "Pending confirmation" : hash ? "Submitted" : "Ready";
+
+  return <div className="page">
+    <Header title="Trade" text="Giao dịch ETH thật trên Ethereum Sepolia. Bạn kiểm tra lệnh, mở ví và tự ký giao dịch." action={<AppKitButton/>}/>
+    <div className="trade-layout">
+      <div className="trade-box">
+        {step === "form" && <>
+          <div className="trade-label">FROM</div>
+          <div className="balance-box"><div><strong>ETH</strong><small>Ethereum Sepolia</small></div><div><strong>{balance ? `${balanceEth.toFixed(6)} ETH` : "—"}</strong><button onClick={() => refetchBalance()} disabled={!address}>↻</button></div></div>
+          <div className="trade-label">TO</div>
+          <div className="input-with-action"><input className="recipient-input large-address-input" value={recipient} onChange={e => { setRecipient(e.target.value); setLocalError(""); }} placeholder="0x…" aria-label="Địa chỉ nhận"/><button onClick={() => { setRecipient(""); setLocalError(""); }}>Xóa</button></div>
+          <div className="trade-label">AMOUNT <button className="ghost-button" type="button" onClick={setMax} disabled={!balance || !isConnected}>MAX</button></div>
+          <input className="amount" inputMode="decimal" value={amount} onChange={e => { setAmount(e.target.value.replace(/[^0-9.]/g, "")); setLocalError(""); }} placeholder="0.001" aria-label="Số lượng ETH"/>
+          <div className="trade-summary"><div><span>Balance</span><strong>{balance ? `${balanceEth.toFixed(6)} ETH` : "—"}</strong></div><div><span>Network</span><strong>{goodNetwork ? "Ethereum Sepolia" : "Wrong network"}</strong></div><div><span>Estimated gas</span><strong>{gasWei ? `~${gasEth.toFixed(6)} ETH` : "Calculating…"}</strong></div></div>
+          {!isConnected && <div className="inline-warning">Kết nối ví để bắt đầu Trade.</div>}
+          {isConnected && !goodNetwork && <button className="primary-button" type="button" onClick={switchToSepolia}>Switch to Sepolia</button>}
+          {localError && <div className="inline-warning">{localError}</div>}
+          {isConnected && goodNetwork && <button className="primary-button" type="button" disabled={!validRecipient || !amountValid || !hasEnough} onClick={review}>Review Trade</button>}
+        </>}
+
+        {step === "review" && <>
+          <div className="trade-label">REVIEW TRADE</div>
+          <div className="trade-review"><div><span>From</span><strong>{shorten(address)}</strong></div><div><span>To</span><strong>{shorten(recipient.trim())}</strong></div><div><span>Amount</span><strong>{amount} ETH</strong></div><div><span>Network</span><strong>Ethereum Sepolia</strong></div><div><span>Estimated gas</span><strong>{gasWei ? `~${gasEth.toFixed(6)} ETH` : "—"}</strong></div><div><span>Total required</span><strong>{Number(formatEther(totalWei)).toFixed(6)} ETH</strong></div></div>
+          <p className="trade-note">Kiểm tra kỹ địa chỉ nhận và số ETH. Khi chọn Confirm &amp; Sign, ví của bạn sẽ mở để bạn tự phê duyệt giao dịch.</p>
+          {localError && <div className="inline-warning">{localError}</div>}
+          <div className="trade-actions"><button className="ghost-button" type="button" onClick={() => setStep("form")}>← Edit Trade</button><button className="primary-button" type="button" onClick={confirmAndSign}>Confirm &amp; Sign</button></div>
+        </>}
+
+        {step === "signing" && <div className="trade-state"><div className="wallet-symbol">◈</div><h2>Waiting for wallet signature</h2><p>Hãy kiểm tra giao dịch trong ví và tự ký hoặc từ chối.</p></div>}
+
+        {(step === "submitted" || step === "confirmed" || step === "failed") && <>
+          <div className="trade-label">TRANSACTION STATUS</div>
+          <div className="trade-state"><div className={confirmed ? "big-check" : receiptFailed ? "check-bad" : "wallet-symbol"}>{confirmed ? "✓" : receiptFailed ? "!" : "◌"}</div><h2>{statusText}</h2><p>{confirmed ? "Giao dịch đã được xác nhận trên Ethereum Sepolia." : receiptFailed ? (receiptError?.shortMessage || "Giao dịch thất bại trên mạng.") : "Giao dịch đã được gửi. Đang chờ block xác nhận…"}</p>{hash && <div className="tx-result"><b>Transaction hash</b><a target="_blank" rel="noreferrer" href={explorerUrl}>{shorten(hash)}</a></div>}{(txError || localError) && <div className="inline-warning">{localError || txError?.shortMessage || "Giao dịch bị từ chối hoặc thất bại."}</div>}<button className="ghost-button" type="button" onClick={resetForm}>New Trade</button></div>
+        </>}
+      </div>
+
+      <aside className="checks">
+        <h3>TRADE CHECKS</h3>
+        <div className="check"><span className={isConnected ? "check-good" : "check-bad"}>{isConnected ? "✓" : "!"}</span><div><b>Wallet</b><small>{isConnected ? shorten(address) : "Chưa kết nối"}</small></div></div>
+        <div className="check"><span className={goodNetwork ? "check-good" : "check-bad"}>{goodNetwork ? "✓" : "!"}</span><div><b>Network</b><small>{goodNetwork ? "Ethereum Sepolia" : "Switch required"}</small></div></div>
+        <div className="check"><span className={validRecipient ? "check-good" : "check-bad"}>{validRecipient ? "✓" : "!"}</span><div><b>Recipient</b><small>{validRecipient ? "Address valid" : "Address invalid"}</small></div></div>
+        <div className="check"><span className={amountValid ? "check-good" : "check-bad"}>{amountValid ? "✓" : "!"}</span><div><b>Amount</b><small>{amountValid ? `${amount} ETH` : "Enter amount"}</small></div></div>
+        <div className="check"><span className={hasEnough ? "check-good" : "check-bad"}>{hasEnough ? "✓" : "!"}</span><div><b>Balance + gas</b><small>{hasEnough ? "Sufficient balance" : "Insufficient or not ready"}</small></div></div>
+        <div className="check"><span className={step === "confirmed" ? "check-good" : "check-bad"}>{step === "confirmed" ? "✓" : "•"}</span><div><b>Status</b><small>{statusText}</small></div></div>
+      </aside>
+    </div>
+  </div>;
 }
 
 function Portfolio({ market }) {
