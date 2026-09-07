@@ -1,0 +1,48 @@
+/* Demo lock polish — visual-only layer. Does not change wallet/market/transaction logic. */
+
+/* Brand: exact public-demo name */
+.brand strong,.mobile-brand strong{font-size:0 !important;line-height:1.15}
+.brand strong::after,.mobile-brand strong::after{content:"Crypto Pro";font-size:15px;font-weight:800;letter-spacing:-.2px}
+.mobile-brand strong::after{font-size:13px}
+.brand span,.mobile-brand span{font-size:0 !important;letter-spacing:0;text-transform:none;margin-top:3px}
+.brand span::after,.mobile-brand span::after{content:"Digital Asset";font-size:9px;letter-spacing:1.2px;color:#69778a}
+.mobile-brand span::after{font-size:8px;letter-spacing:1px}
+
+/* Live Market section: clear product identity under the heading */
+.page > .section-title:first-of-type h2{font-size:0;line-height:1.05;display:flex;flex-direction:column;align-items:flex-start;gap:5px}
+.page > .section-title:first-of-type h2::before{content:"Live Market";font-size:24px;letter-spacing:-.8px;color:#eef2f7}
+.page > .section-title:first-of-type h2::after{content:"Crypto Pro Digital Asset";font-size:9px;letter-spacing:1.35px;text-transform:uppercase;color:#69778a;font-weight:800}
+
+/* Trade: make the existing real Sepolia transfer flow read as a deliberate 3-step demo */
+.trade-layout{grid-template-columns:minmax(0,680px) 300px;gap:16px}
+.trade-box{position:relative;padding:72px 24px 24px;background:linear-gradient(180deg,#101821 0%,#0d141d 100%);box-shadow:0 18px 50px #0005}
+.trade-box::before{content:"1  AMOUNT     →     2  RECIPIENT     →     3  REVIEW & SIGN";position:absolute;left:24px;right:24px;top:18px;border-bottom:1px solid #202a37;padding:0 0 14px;color:#7f8da0;font-size:9px;font-weight:850;letter-spacing:1.15px;text-align:center}
+.trade-box::after{content:"ETH transfer • Ethereum Sepolia • You approve the transaction in your wallet";position:absolute;left:24px;right:24px;top:48px;color:#55dca5;font-size:8px;letter-spacing:.55px;text-align:center}
+.trade-label{display:block;font-weight:850;color:#8795a7;margin-top:4px}
+.balance-box{margin-top:8px;margin-bottom:22px;background:#0a1017;border-color:#2a3544;box-shadow:inset 0 0 0 1px #111a24}
+.amount{border:1px solid #273241 !important;background:#0a1017 !important;border-radius:12px;margin:8px 0 18px;padding:13px 14px !important;font-size:30px}
+.input-with-action{margin-top:8px;margin-bottom:18px}
+.recipient-input{background:#0a1017}
+.primary-button{min-height:48px;font-size:12px;letter-spacing:.1px}
+.tx-result{margin-top:14px}
+.checks{position:relative;padding:22px 20px 18px;background:#0d141d}
+.checks::before{content:"TRADE STATUS";display:block;margin-bottom:14px;color:#6f7e91;font-size:9px;font-weight:900;letter-spacing:1.5px}
+.checks h3{font-size:0;margin:0}
+.checks h3::after{content:"Ready to execute";font-size:15px;color:#eef2f7;letter-spacing:-.3px}
+.check{padding:12px 0}
+.check:last-child{padding-bottom:4px}
+
+@media (max-width:900px){
+  .trade-layout{grid-template-columns:1fr}
+  .trade-box{padding:70px 18px 20px}
+  .trade-box::before{left:18px;right:18px;font-size:8px;letter-spacing:.7px}
+  .trade-box::after{left:18px;right:18px;font-size:7px}
+}
+
+@media (max-width:620px){
+  .page > .section-title:first-of-type h2::before{font-size:21px}
+  .page > .section-title:first-of-type h2::after{font-size:8px;letter-spacing:1px}
+  .trade-box::before{content:"1 AMOUNT   •   2 RECIPIENT   •   3 SIGN";text-align:left}
+  .trade-box::after{content:"Sepolia ETH • wallet-signed testnet transfer";text-align:left}
+  .amount{font-size:26px}
+}
