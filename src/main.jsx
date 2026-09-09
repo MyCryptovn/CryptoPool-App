@@ -59,12 +59,10 @@ function useRealtimeMarket() {
   const [lastUpdate, setLastUpdate] = useState(0);
   const socketRef = useRef(null);
   const retryRef = useRef(null);
-
   const apply = useCallback((symbol, price, change, source = "Binance WebSocket") => {
     setData(prev => ({ ...prev, [symbol]: { ...prev[symbol], price, previous: prev[symbol]?.price ?? price, change: Number.isFinite(change) ? change : prev[symbol]?.change ?? 0, updatedAt: Date.now(), source } }));
     setLastUpdate(Date.now());
   }, []);
-
   useEffect(() => {
     let alive = true;
     const connect = () => {
@@ -74,14 +72,7 @@ function useRealtimeMarket() {
         const ws = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${streams}`);
         socketRef.current = ws;
         ws.onopen = () => alive && setConnected(true);
-        ws.onmessage = event => {
-          try {
-            const x = JSON.parse(event.data)?.data;
-            const asset = ASSETS.find(a => a.binance === x?.s?.toLowerCase());
-            if (!asset) return;
-            apply(asset.symbol, Number(x.c), Number(x.P), "Binance WebSocket");
-          } catch {}
-        };
+        ws.onmessage = event => { try { const x = JSON.parse(event.data)?.data; const asset = ASSETS.find(a => a.binance === x?.s?.toLowerCase()); if (!asset) return; apply(asset.symbol, Number(x.c), Number(x.P), "Binance WebSocket"); } catch {} };
         ws.onerror = () => { try { ws.close(); } catch {} };
         ws.onclose = () => { if (alive) { setConnected(false); retryRef.current = setTimeout(connect, 4000); } };
       } catch { setConnected(false); retryRef.current = setTimeout(connect, 4000); }
@@ -89,7 +80,6 @@ function useRealtimeMarket() {
     connect();
     return () => { alive = false; clearTimeout(retryRef.current); try { socketRef.current?.close(); } catch {} };
   }, [apply]);
-
   useEffect(() => {
     let cancelled = false;
     const loadFallback = async () => {
@@ -99,10 +89,7 @@ function useRealtimeMarket() {
         if (!r.ok) return;
         const rows = await r.json();
         if (cancelled) return;
-        rows.forEach(x => {
-          const a = ASSETS.find(v => v.cg === x.id);
-          if (a) apply(a.symbol, Number(x.current_price), Number(x.price_change_percentage_24h), "CoinGecko");
-        });
+        rows.forEach(x => { const a = ASSETS.find(v => v.cg === x.id); if (a) apply(a.symbol, Number(x.current_price), Number(x.price_change_percentage_24h), "CoinGecko"); });
       } catch {}
     };
     loadFallback();
@@ -127,19 +114,16 @@ function useChart(asset) {
   }, [asset.binance, asset.price, asset.change]);
   return { points, loading };
 }
-
 function MiniChart({ points, large = false }) {
   const w = large ? 760 : 180, h = large ? 260 : 52, pad = large ? 12 : 3;
   const min = Math.min(...points), max = Math.max(...points), range = max - min || 1;
   const d = points.map((p, i) => `${i ? "L" : "M"}${pad + i * ((w - pad * 2) / Math.max(points.length - 1, 1))},${h - pad - ((p - min) / range) * (h - pad * 2)}`).join(" ");
   return <svg className={large ? "chart-large" : "chart-mini"} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-label="price chart"><path d={d} fill="none" stroke="currentColor" strokeWidth={large ? 2.5 : 2} vectorEffect="non-scaling-stroke" /></svg>;
 }
-
 function AssetCard({ asset, onOpen }) {
   const rising = asset.change >= 0;
   return <button className="asset-card asset-click" onClick={() => onOpen(asset)} aria-label={`Mở biểu đồ ${asset.name}`}><div className="asset-head"><div className={`asset-icon ${asset.tone}`}>{asset.symbol[0]}</div><div><strong>{asset.symbol}</strong><span>{asset.name}</span></div><span className={rising ? "change positive" : "change negative"}>{rising ? "+" : ""}{Number(asset.change || 0).toFixed(2)}%</span></div><div className="asset-price">${money(asset.price)}</div><MiniChart points={seededPoints(asset.price, asset.change)} /><div className="asset-live"><span className={asset.source?.includes("WebSocket") ? "live-pulse" : ""}>{asset.source?.includes("WebSocket") ? "LIVE" : "Market"}</span><small>{timeLabel(asset.updatedAt)}</small></div></button>;
 }
-
 function Header({ title, text, action }) { return <div className="page-header"><div><div className="kicker">CRYPTOPool PRO</div><h1>{title}</h1><p>{text}</p></div>{action}</div>; }
 function SectionTitle({ title, action, onClick }) { return <div className="section-title"><h2>{title}</h2>{action && <button onClick={onClick}>{action} <span>→</span></button>}</div>; }
 function PoolCard({ pool }) { return <article className="pool-card"><div className="pool-icon">◈</div><div className="pool-content"><div className="pool-line"><h3>{pool.name}</h3><span>{pool.tag}</span></div><p>{pool.note}</p><div className="pool-meta"><span>{pool.assets}</span><strong>DEMO</strong></div></div></article>; }
@@ -149,13 +133,11 @@ function Dashboard({ market, go, openAsset }) {
   const liveAssets = Object.values(market.data);
   return <div className="page"><section className="hero-card-main"><div className="hero-copy"><div className="kicker"><span className="live-dot"/> DIGITAL ASSET PLATFORM</div><h1>Quản lý tài sản số<br/><em>một cách chuyên nghiệp.</em></h1><p>CryptoPool PRO theo dõi 10 tài sản crypto với dữ liệu thị trường cập nhật trực tiếp, biểu đồ và tín hiệu tăng/giảm. Ví vẫn hoạt động trên Ethereum Sepolia testnet.</p><div className="hero-actions"><AppKitButton/><button className="ghost-button" onClick={() => go("markets")}>Xem thị trường <span>→</span></button></div><div className="trust-row"><span>✓ Non-custodial</span><span>✓ 10 assets live</span><span>✓ Testnet only</span></div></div><div className="hero-visual"><div className="orb orb-a"/><div className="orb orb-b"/><div className="portfolio-float"><span>MARKET STREAM</span><strong>{market.connected ? "LIVE" : "CONNECTING"}</strong><small>{market.connected ? "Binance WebSocket" : "Đang tìm nguồn dữ liệu"}</small></div><div className="mini-bars"><i/><i/><i/><i/><i/><i/><i/><i/></div></div></section><section className="stats-row"><div><span>Market feed</span><strong><i className={`live-dot ${market.connected ? "" : "offline"}`}/> {market.connected ? "Live" : "Fallback"}</strong></div><div><span>Assets tracked</span><strong>10 <small>crypto assets</small></strong></div><div><span>Wallet</span><strong>{address ? shorten(address) : "Not connected"}</strong></div></section><SectionTitle title="Thị trường" action="Xem tất cả" onClick={() => go("markets")}/><div className="asset-grid">{liveAssets.slice(0, 6).map(a => <AssetCard key={a.symbol} asset={a} onOpen={openAsset}/>)}</div><SectionTitle title="Pool mẫu" action="Khám phá" onClick={() => go("pools")}/><div className="pool-grid">{POOLS.map(p => <PoolCard key={p.name} pool={p}/>)}</div><div className="notice"><span>◉</span><div><strong>Dữ liệu thị trường trực tiếp</strong><p>Giá thị trường được lấy từ nguồn dữ liệu bên ngoài. Tính năng đầu tư/lợi nhuận vẫn là demo và không phải lời hứa lợi nhuận.</p></div></div></div>;
 }
-
 function Markets({ market, openAsset, go }) {
   const [q, setQ] = useState("");
   const list = Object.values(market.data).filter(a => `${a.symbol} ${a.name}`.toLowerCase().includes(q.toLowerCase()));
   return <div className="page"><Header title="Tài sản crypto" text={`10 tài sản • ${market.connected ? "giá đang cập nhật trực tiếp" : "đang dùng nguồn dự phòng"} • cập nhật ${timeLabel(market.lastUpdate)}`} action={<button className="ghost-button" onClick={() => go("trade")}>Mở Trade →</button>}/><div className="toolbar"><label className="search"><span>⌕</span><input aria-label="Tìm tài sản" value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm BTC, ETH…"/></label><span className={market.connected ? "feed-ok" : "muted"}>{market.connected ? "● LIVE" : "○ FALLBACK"}</span></div><div className="asset-grid markets-grid">{list.map(a => <AssetCard key={a.symbol} asset={a} onOpen={openAsset}/>)}</div></div>;
 }
-
 function ChartModal({ asset, onClose }) {
   const { points, loading } = useChart(asset);
   const current = points[points.length - 1] || asset.price;
@@ -163,7 +145,6 @@ function ChartModal({ asset, onClose }) {
   const chartChange = first ? ((current - first) / first) * 100 : 0;
   return <div className="modal-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}><section className="chart-modal" role="dialog" aria-modal="true" aria-label={`${asset.name} chart`}><div className="modal-head"><div><div className="kicker">{asset.symbol} / USDT</div><h2>{asset.name}</h2><div className="modal-price">${money(asset.price)} <span className={asset.change >= 0 ? "positive" : "negative"}>{asset.change >= 0 ? "+" : ""}{Number(asset.change || 0).toFixed(2)}% 24H</span></div></div><button className="icon-button" onClick={onClose} aria-label="Đóng">×</button></div><div className="chart-wrap"><MiniChart points={points} large={true}/>{loading && <span className="chart-loading">Đang tải lịch sử…</span>}</div><div className="chart-meta"><span>48 giờ</span><strong className={chartChange >= 0 ? "positive" : "negative"}>{chartChange >= 0 ? "+" : ""}{chartChange.toFixed(2)}%</strong><span>Cập nhật {timeLabel(asset.updatedAt)}</span></div><div className="alert-panel"><strong>Cảnh báo giá</strong><span className={asset.change >= 3 ? "positive" : asset.change <= -3 ? "negative" : "muted"}>{asset.change >= 3 ? "▲ Tăng mạnh" : asset.change <= -3 ? "▼ Giảm mạnh" : "● Biến động bình thường"}</span><small>Ngưỡng hiển thị nhanh: ±3% trong 24H.</small></div></section></div>;
 }
-
 function Wallet({ go }) {
   const { address, isConnected } = useAppKitAccount();
   const { chainId } = useAppKitNetwork();
@@ -176,25 +157,17 @@ function Trade() {
   const { chainId } = useAppKitNetwork();
   const { switchChain } = useSwitchChain();
   const goodNetwork = Number(chainId) === SEPOLIA_ID;
-  const { data: balance, refetch: refetchBalance } = useBalance({ address, chainId: SEPOLIA_ID, query: { enabled: Boolean(address) } });
-  const { data: recipientBalance, refetch: refetchRecipientBalance } = useBalance({ address: isAddress(address || "") ? address : undefined, chainId: SEPOLIA_ID, query: { enabled: false } });
-  const { data: gasPrice } = useGasPrice({ chainId: SEPOLIA_ID, query: { enabled: goodNetwork } });
-  const { data: hash, error: txError, isPending, sendTransactionAsync, reset: resetTransaction } = useSendTransaction();
-  const { isLoading: confirming, isSuccess: confirmed, isError: receiptFailed, error: receiptError } = useWaitForTransactionReceipt({ hash, confirmations: 1 });
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("0x9BB4aBC72f2c4818F66C895Cd1a9de2c827C5C06");
   const [step, setStep] = useState("form");
   const [localError, setLocalError] = useState("");
-
   const validRecipient = isAddress(recipient.trim());
-  const amountWei = useMemo(() => {
-    try {
-      if (!amount || Number(amount) <= 0) return 0n;
-      return parseEther(amount);
-    } catch {
-      return 0n;
-    }
-  }, [amount]);
+  const { data: balance, refetch: refetchBalance } = useBalance({ address, chainId: SEPOLIA_ID, query: { enabled: Boolean(address) } });
+  const { data: recipientBalance, refetch: refetchRecipientBalance } = useBalance({ address: validRecipient ? recipient.trim() : undefined, chainId: SEPOLIA_ID, query: { enabled: validRecipient } });
+  const { data: gasPrice } = useGasPrice({ chainId: SEPOLIA_ID, query: { enabled: goodNetwork } });
+  const { data: hash, error: txError, isPending, sendTransactionAsync, reset: resetTransaction } = useSendTransaction();
+  const { isLoading: confirming, isSuccess: confirmed, isError: receiptFailed, error: receiptError } = useWaitForTransactionReceipt({ hash, confirmations: 1 });
+  const amountWei = useMemo(() => { try { if (!amount || Number(amount) <= 0) return 0n; return parseEther(amount); } catch { return 0n; } }, [amount]);
   const balanceWei = balance?.value ?? 0n;
   const gasUnitsFallback = 21000n;
   const gasUnits = gasPrice && gasPrice > 0n ? gasUnitsFallback : gasUnitsFallback;
@@ -207,84 +180,24 @@ function Trade() {
   const recipientBalanceEth = recipientBalance ? Number(formatEther(recipientBalance.value)) : 0;
   const explorerUrl = hash ? `https://sepolia.etherscan.io/tx/${hash}` : "";
   const recipientExplorerUrl = validRecipient ? `https://sepolia.etherscan.io/address/${recipient.trim()}` : "";
-
-  useEffect(() => {
-    if (!validRecipient) return;
-    refetchRecipientBalance();
-  }, [recipient, validRecipient, refetchRecipientBalance]);
-
-  const validationMessage = !isConnected
-    ? "Kết nối ví trước khi giao dịch."
-    : !goodNetwork
-      ? "Ví đang ở mạng khác. Chuyển sang Ethereum Sepolia."
-      : !validRecipient
-        ? "Địa chỉ nhận không hợp lệ."
-        : !amountValid
-          ? "Nhập số lượng ETH lớn hơn 0."
-          : !hasEnough
-            ? "Không đủ ETH để trả cả số tiền gửi và gas."
-            : "";
-
-  const resetForm = () => {
-    setStep("form");
-    setLocalError("");
-    resetTransaction();
-    if (validRecipient) refetchRecipientBalance();
-  };
-
-  const setMax = () => {
-    if (!balance) return;
-    const reserveWei = gasWei || parseEther("0.0002");
-    const maxWei = balanceWei > reserveWei ? balanceWei - reserveWei : 0n;
-    setAmount(maxWei > 0n ? formatEther(maxWei) : "0");
-    setLocalError("");
-  };
-
-  const review = () => {
-    setLocalError("");
-    if (validationMessage) {
-      setLocalError(validationMessage);
-      return;
-    }
-    setStep("review");
-  };
-
-  const switchToSepolia = async () => {
-    try {
-      setLocalError("");
-      await switchChain({ chainId: SEPOLIA_ID });
-    } catch (e) {
-      setLocalError(e?.shortMessage || e?.message || "Không thể chuyển sang Sepolia.");
-    }
-  };
-
+  const validationMessage = !isConnected ? "Kết nối ví trước khi giao dịch." : !goodNetwork ? "Ví đang ở mạng khác. Chuyển sang Ethereum Sepolia." : !validRecipient ? "Địa chỉ nhận không hợp lệ." : !amountValid ? "Nhập số lượng ETH lớn hơn 0." : !hasEnough ? "Không đủ ETH để trả cả số tiền gửi và gas." : "";
+  const resetForm = () => { setStep("form"); setLocalError(""); resetTransaction(); if (validRecipient) refetchRecipientBalance(); };
+  const setMax = () => { if (!balance) return; const reserveWei = gasWei || parseEther("0.0002"); const maxWei = balanceWei > reserveWei ? balanceWei - reserveWei : 0n; setAmount(maxWei > 0n ? formatEther(maxWei) : "0"); setLocalError(""); };
+  const review = () => { setLocalError(""); if (validationMessage) { setLocalError(validationMessage); return; } setStep("review"); };
+  const switchToSepolia = async () => { try { setLocalError(""); await switchChain({ chainId: SEPOLIA_ID }); } catch (e) { setLocalError(e?.shortMessage || e?.message || "Không thể chuyển sang Sepolia."); } };
   const confirmAndSign = async () => {
     setLocalError("");
-    if (validationMessage) {
-      setLocalError(validationMessage);
-      setStep("form");
-      return;
-    }
+    if (validationMessage) { setLocalError(validationMessage); setStep("form"); return; }
     try {
       setStep("signing");
       await sendTransactionAsync({ to: recipient.trim(), value: amountWei, chainId: SEPOLIA_ID });
       setStep("submitted");
       await refetchBalance();
       await refetchRecipientBalance();
-    } catch (e) {
-      setStep("review");
-      setLocalError(e?.shortMessage || e?.message || "Giao dịch bị từ chối hoặc thất bại.");
-    }
+    } catch (e) { setStep("review"); setLocalError(e?.shortMessage || e?.message || "Giao dịch bị từ chối hoặc thất bại."); }
   };
-
-  useEffect(() => {
-    if (confirmed) setStep("confirmed");
-    else if (receiptFailed) setStep("failed");
-    if (confirmed && validRecipient) refetchRecipientBalance();
-  }, [confirmed, receiptFailed, validRecipient, refetchRecipientBalance]);
-
+  useEffect(() => { if (confirmed) setStep("confirmed"); else if (receiptFailed) setStep("failed"); if (confirmed && validRecipient) refetchRecipientBalance(); }, [confirmed, receiptFailed, validRecipient, refetchRecipientBalance]);
   const statusText = confirmed ? "Confirmed" : receiptFailed ? "Failed" : confirming ? "Pending confirmation" : hash ? "Submitted" : "Ready";
-
   return <div className="page">
     <Header title="Trade" text="Giao dịch ETH thật trên Ethereum Sepolia. Bạn kiểm tra lệnh, mở ví và tự ký giao dịch." action={<AppKitButton/>}/>
     <div className="trade-layout">
@@ -303,7 +216,6 @@ function Trade() {
           {localError && <div className="inline-warning">{localError}</div>}
           {isConnected && goodNetwork && <button className="primary-button" type="button" disabled={!validRecipient || !amountValid || !hasEnough} onClick={review}>Review Trade</button>}
         </>}
-
         {step === "review" && <>
           <div className="trade-label">REVIEW TRADE</div>
           <div className="trade-review"><div><span>From</span><strong>{shorten(address)}</strong></div><div><span>To</span><strong>{shorten(recipient.trim())}</strong></div><div><span>Recipient balance</span><strong>{validRecipient && recipientBalance ? `${recipientBalanceEth.toFixed(6)} ETH` : validRecipient ? "0.000000 ETH" : "—"}</strong></div><div><span>Amount</span><strong>{amount} ETH</strong></div><div><span>Network</span><strong>Ethereum Sepolia</strong></div><div><span>Estimated gas</span><strong>{gasWei ? `~${gasEth.toFixed(6)} ETH` : "—"}</strong></div><div><span>Total required</span><strong>{Number(formatEther(totalWei)).toFixed(6)} ETH</strong></div></div>
@@ -312,15 +224,12 @@ function Trade() {
           {localError && <div className="inline-warning">{localError}</div>}
           <div className="trade-actions"><button className="ghost-button" type="button" onClick={() => setStep("form")}>← Edit Trade</button><button className="primary-button" type="button" onClick={confirmAndSign}>Confirm &amp; Sign</button></div>
         </>}
-
         {step === "signing" && <div className="trade-state"><div className="wallet-symbol">◈</div><h2>Waiting for wallet signature</h2><p>Hãy kiểm tra giao dịch trong ví và tự ký hoặc từ chối.</p></div>}
-
         {(step === "submitted" || step === "confirmed" || step === "failed") && <>
           <div className="trade-label">TRANSACTION STATUS</div>
           <div className="trade-state"><div className={confirmed ? "big-check" : receiptFailed ? "check-bad" : "wallet-symbol"}>{confirmed ? "✓" : receiptFailed ? "!" : "◌"}</div><h2>{statusText}</h2><p>{confirmed ? "Giao dịch đã được xác nhận trên Ethereum Sepolia." : receiptFailed ? (receiptError?.shortMessage || "Giao dịch thất bại trên mạng.") : "Giao dịch đã được gửi. Đang chờ block xác nhận…"}</p>{hash && <div className="tx-result"><b>Transaction hash</b><a target="_blank" rel="noreferrer" href={explorerUrl}>{shorten(hash)} · Etherscan ↗</a></div>}{(txError || localError) && <div className="inline-warning">{localError || txError?.shortMessage || "Giao dịch bị từ chối hoặc thất bại."}</div>}<button className="ghost-button" type="button" onClick={resetForm}>New Trade</button></div>
         </>}
       </div>
-
       <aside className="checks">
         <h3>TRADE CHECKS</h3>
         <div className="check"><span className={isConnected ? "check-good" : "check-bad"}>{isConnected ? "✓" : "!"}</span><div><b>Wallet</b><small>{isConnected ? shorten(address) : "Chưa kết nối"}</small></div></div>
@@ -342,7 +251,6 @@ function Portfolio({ market }) {
   return <div className="page"><Header title="Portfolio" text="Tổng quan tài sản mẫu và dữ liệu thị trường hiện tại." action={<AppKitButton/>}/><div className="portfolio-hero"><span>DEMO PORTFOLIO VALUE</span><strong>$10,248.60</strong><small>{address ? `Ví ${shorten(address)} • ETH market $${money(eth)}` : "Kết nối ví để hiển thị số dư testnet"}</small></div><div className="portfolio-grid"><div><span>Available</span><strong>$8,540.20</strong></div><div><span>Allocated</span><strong>$1,708.40</strong></div><div><span>Assets tracked</span><strong>10</strong></div></div><div className="notice"><span>◉</span><div><strong>Lưu ý</strong><p>Giá crypto là dữ liệu thị trường; giá trị portfolio trên trang này vẫn là số liệu demo, không phải số dư đầu tư thật.</p></div></div></div>;
 }
 function Pools({ go }) { return <div className="page"><Header title="Pools" text="Các pool minh họa cho kiến trúc sản phẩm tương lai." action={<button className="ghost-button" onClick={() => go("markets")}>Xem tài sản →</button>}/><div className="pool-grid">{POOLS.map(p => <PoolCard key={p.name} pool={p}/>)}</div><div className="notice"><span>◉</span><div><strong>Chưa phải DeFi production</strong><p>Smart contract, vault, yield strategy và audit production chưa được kích hoạt trong bản PRO hiện tại.</p></div></div></div>; }
-
 function App() {
   const [page, setPage] = useState("dashboard");
   const [selected, setSelected] = useState(null);
@@ -352,5 +260,4 @@ function App() {
   const nav = [{ id: "dashboard", icon: "⌂", label: "Dashboard" }, { id: "markets", icon: "◌", label: "Markets" }, { id: "pools", icon: "◈", label: "Pools" }, { id: "portfolio", icon: "▣", label: "Portfolio" }, { id: "trade", icon: "↗", label: "Trade" }, { id: "wallet", icon: "◎", label: "Wallet" }];
   return <div className="app-shell"><aside className="sidebar"><div className="brand"><div className="brand-mark">C</div><div><strong>CryptoPool</strong><span>PRO • WEB3 / DEFI</span></div></div><span className="nav-label">PLATFORM</span><nav>{nav.map(n => <button key={n.id} className={page === n.id ? "active" : ""} onClick={() => go(n.id)}><span>{n.icon}</span>{n.label}</button>)}</nav><div className="sidebar-bottom"><div className="wallet-mini"><div className="wallet-mini-top"><span className={`status-dot ${market.connected ? "on" : ""}`}/>{market.connected ? "Market live" : "Market reconnecting"}</div><strong>Ethereum Sepolia</strong><p>Testnet environment</p><span className="network-tag good">10 assets</span></div><button className="theme-switch" onClick={() => document.documentElement.classList.toggle("light")}>◐ Theme</button></div></aside><main><header className="topbar"><div className="mobile-brand"><div className="brand-mark">C</div><div><strong>CryptoPool PRO</strong><span>WEB3 / DEFI</span></div></div><span className="network-chip"><i/> {market.connected ? "Live Market" : "Connecting"}</span><AppKitButton/></header>{page === "dashboard" && <Dashboard market={market} go={go} openAsset={setSelected}/>} {page === "markets" && <Markets market={market} openAsset={setSelected} go={go}/>} {page === "pools" && <Pools go={go}/>} {page === "portfolio" && <Portfolio market={market}/>} {page === "trade" && <Trade/>} {page === "wallet" && <Wallet go={go}/>} </main>{selected && <ChartModal asset={selected} onClose={() => setSelected(null)}/>}<nav className="mobile-nav">{nav.map(n => <button key={n.id} className={page === n.id ? "active" : ""} onClick={() => go(n.id)}><span>{n.icon}</span><small>{n.label}</small></button>)}</nav></div>;
 }
-
 ReactDOM.createRoot(document.getElementById("root")).render(<WagmiProvider config={adapter.wagmiConfig}><QueryClientProvider client={queryClient}><App/></QueryClientProvider></WagmiProvider>);
